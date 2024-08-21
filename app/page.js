@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import Cookies from 'js-cookie';
+import { FaGithub } from 'react-icons/fa';
 
 const models = [
   { name: 'GPT-3', date: 'June 2020' },
@@ -13,14 +14,7 @@ const models = [
   { name: 'Claude 2', date: 'July 2023' },
 ];
 
-const initialChartData = [
-  { date: 'Jan', Dumber: 0, 'Still Smart': 0 },
-  { date: 'Feb', Dumber: 0, 'Still Smart': 0 },
-  { date: 'Mar', Dumber: 0, 'Still Smart': 0 },
-  { date: 'Apr', Dumber: 0, 'Still Smart': 0 },
-  { date: 'May', Dumber: 0, 'Still Smart': 0 },
-  { date: 'Jun', Dumber: 0, 'Still Smart': 0 },
-];
+const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
@@ -35,45 +29,73 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.log('Chart Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <h1>Something went wrong with the chart.</h1>;
+    }
+
+    return this.props.children; 
+  }
+}
+
 export default function Page() {
-  const [chartData, setChartData] = useState(
-    Object.fromEntries(models.map(model => [model.name, initialChartData]))
-  );
+  const [chartData, setChartData] = useState({});
 
   useEffect(() => {
-    setChartData(prevData =>
-      Object.fromEntries(
-        Object.entries(prevData).map(([modelName, data]) => [
-          modelName,
-          data.map(item => ({
-            ...item,
-            Dumber: Math.floor(Math.random() * 30),
-            'Still Smart': Math.floor(Math.random() * 30)
-          }))
-        ])
-      )
-    );
+    fetchVoteData();
   }, []);
 
-  const handleVote = (modelName, vote) => {
-    setChartData(prevData => ({
-      ...prevData,
-      [modelName]: prevData[modelName].map((item, index) => 
-        index === prevData[modelName].length - 1
-          ? {
-              ...item,
-              Dumber: vote === 'dumber' 
-                ? item.Dumber + Math.floor(Math.random() * 5) + 1
-                : Math.max(0, item.Dumber - Math.floor(Math.random() * 5) - 1),
-              'Still Smart': vote === 'smart'
-                ? item['Still Smart'] + Math.floor(Math.random() * 5) + 1
-                : Math.max(0, item['Still Smart'] - Math.floor(Math.random() * 5) - 1)
-            }
-          : item
-      )
-    }));
-    // Set a cookie to indicate that the user has voted for this model
-    Cookies.set(`voted_${modelName}`, 'true', { expires: 365 });
+  const fetchVoteData = async () => {
+    try {
+      const response = await fetch('/api/votes');
+      const data = await response.json();
+      const formattedData = formatChartData(data);
+      setChartData(formattedData);
+    } catch (error) {
+      console.error('Failed to fetch vote data:', error);
+    }
+  };
+
+  const formatChartData = (data) => {
+    const formattedData = {};
+    models.forEach(model => {
+      formattedData[model.name] = months.map(month => ({
+        date: month,
+        Dumber: data[`${model.name}_dumber`] || 0,
+        'Still Smart': data[`${model.name}_smart`] || 0
+      }));
+    });
+    return formattedData;
+  };
+
+  const handleVote = async (modelName, vote) => {
+    try {
+      await fetch('/api/votes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ model: modelName, vote }),
+      });
+      await fetchVoteData(); // Refresh data after voting
+      Cookies.set(`voted_${modelName}`, 'true', { expires: 365 });
+    } catch (error) {
+      console.error('Failed to submit vote:', error);
+    }
   };
 
   function InteractiveChart({ model }) {
@@ -90,38 +112,40 @@ export default function Page() {
         <p className="text-sm text-gray-600 mb-6">📅 Tracking since {model.date}</p>
         <div className="h-64 mb-6">
           {chartData[model.name] ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData[model.name]} margin={{ top: 5, right: 5, left: -30, bottom: 5 }}>
-                <defs>
-                  <linearGradient id="colorDumber" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#FFA07A" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#FFA07A" stopOpacity={0.2}/>
-                  </linearGradient>
-                  <linearGradient id="colorStillSmart" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#87CEFA" stopOpacity={0.8}/>
-                    <stop offset="95%" stopColor="#87CEFA" stopOpacity={0.2}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="date" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{fill: '#888888', fontSize: 12}}
-                  dy={10}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{fill: '#888888', fontSize: 12}} 
-                  width={30}
-                  dx={-10}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="Dumber" stackId="1" stroke="#FF6347" fill="url(#colorDumber)" />
-                <Area type="monotone" dataKey="Still Smart" stackId="1" stroke="#4682B4" fill="url(#colorStillSmart)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            <ErrorBoundary>
+              <ResponsiveContainer width="100%" height="100%" key={JSON.stringify(chartData[model.name])}>
+                <AreaChart data={chartData[model.name]} margin={{ top: 5, right: 5, left: -30, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="colorDumber" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#FFA07A" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#FFA07A" stopOpacity={0.2}/>
+                    </linearGradient>
+                    <linearGradient id="colorStillSmart" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#87CEFA" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#87CEFA" stopOpacity={0.2}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis 
+                    dataKey="date" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{fill: '#888888', fontSize: 12}}
+                    dy={10}
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{fill: '#888888', fontSize: 12}} 
+                    width={30}
+                    dx={-10}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area type="monotone" dataKey="Dumber" stackId="1" stroke="#FF6347" fill="url(#colorDumber)" />
+                  <Area type="monotone" dataKey="Still Smart" stackId="1" stroke="#4682B4" fill="url(#colorStillSmart)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ErrorBoundary>
           ) : (
             <div className="flex items-center justify-center h-full">
               <p className="text-gray-500">Loading chart data...</p>
@@ -172,6 +196,19 @@ export default function Page() {
           ))}
         </div>
       </div>
+      <footer className="w-full mt-16 py-8">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="flex flex-col items-left justify-center text-gray-600">
+            <a href="https://github.com/will4381/dumber-models" target="_blank" rel="noopener noreferrer" className="flex items-center mb-4 hover:text-gray-800 transition-colors duration-300">
+              <FaGithub className="mr-2 text-2xl" />
+              View the code
+            </a>
+            <a href="https://twitter.com/hellakusch" target="_blank" rel="noopener noreferrer" className="hover:text-gray-800 transition-colors duration-300">
+              Built by @hellakusch
+            </a>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }
