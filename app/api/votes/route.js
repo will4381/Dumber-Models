@@ -39,23 +39,27 @@ export async function GET() {
 
     const formattedVotes = {};
 
-    for (const [key, value] of Object.entries(votes)) {
-      console.log(`Processing key: ${key}, value:`, value);
-      const [model, voteType] = key.split('_');
-      if (!formattedVotes[model]) {
-        formattedVotes[model] = { dumber: [], smart: [] };
-      }
+    // Handle the specific structure returned by Vercel KV
+    if (votes.result && Array.isArray(votes.result)) {
+      for (let i = 0; i < votes.result.length; i += 2) {
+        const key = votes.result[i];
+        const value = votes.result[i + 1];
+        const [model, voteType] = key.split('_');
+        
+        if (!formattedVotes[model]) {
+          formattedVotes[model] = { dumber: [], smart: [] };
+        }
 
-      let parsedValue;
-      try {
-        parsedValue = typeof value === 'string' ? JSON.parse(value) : value;
-      } catch (parseError) {
-        console.error(`Error parsing value for ${key}:`, parseError);
-        parsedValue = [];
-      }
+        let parsedValue;
+        try {
+          parsedValue = JSON.parse(value);
+        } catch (parseError) {
+          console.error(`Error parsing value for ${key}:`, parseError);
+          parsedValue = [];
+        }
 
-      formattedVotes[model][voteType] = Array.isArray(parsedValue) ? parsedValue : [parsedValue];
-      console.log(`Formatted votes for ${model} ${voteType}:`, formattedVotes[model][voteType]);
+        formattedVotes[model][voteType] = Array.isArray(parsedValue) ? parsedValue : [parsedValue];
+      }
     }
 
     console.log('Final formatted votes:', formattedVotes);
@@ -75,15 +79,18 @@ export async function POST(request) {
 
     const key = `${model}_${vote}`;
     const currentVotes = await fetchFromKV('GET');
-    console.log(`Current votes for ${key}:`, currentVotes[key]);
+    console.log('Current votes:', currentVotes);
 
     let updatedVotes = [];
-
-    if (currentVotes[key]) {
-      try {
-        updatedVotes = typeof currentVotes[key] === 'string' ? JSON.parse(currentVotes[key]) : currentVotes[key];
-      } catch (parseError) {
-        console.error(`Error parsing current votes for ${key}:`, parseError);
+    if (currentVotes.result && Array.isArray(currentVotes.result)) {
+      const index = currentVotes.result.indexOf(key);
+      if (index !== -1 && index + 1 < currentVotes.result.length) {
+        const value = currentVotes.result[index + 1];
+        try {
+          updatedVotes = JSON.parse(value);
+        } catch (parseError) {
+          console.error(`Error parsing current votes for ${key}:`, parseError);
+        }
       }
     }
 
