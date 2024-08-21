@@ -95,20 +95,19 @@ export default function Page() {
     console.log('Formatting chart data...');
     const formattedData = {};
     models.forEach(model => {
-      const dumberVotes = data[`${model.name}_dumber`] || [];
-      const smartVotes = data[`${model.name}_smart`] || [];
-      console.log(`${model.name} votes:`, { dumber: dumberVotes.length, smart: smartVotes.length });
+      const modelData = data[model.name] || { dumber: [], smart: [] };
+      console.log(`${model.name} votes:`, { dumber: modelData.dumber.length, smart: modelData.smart.length });
 
       formattedData[model.name] = {
         monthly: months.map(month => ({
           date: month,
-          Dumber: dumberVotes.filter(vote => new Date(vote.timestamp).getMonth() === months.indexOf(month)).length,
-          'Still Smart': smartVotes.filter(vote => new Date(vote.timestamp).getMonth() === months.indexOf(month)).length
+          Dumber: modelData.dumber.filter(vote => new Date(vote.timestamp).getMonth() === months.indexOf(month)).length,
+          'Still Smart': modelData.smart.filter(vote => new Date(vote.timestamp).getMonth() === months.indexOf(month)).length
         })),
         hourly: Array.from({ length: 24 }, (_, i) => ({
           hour: i,
-          Dumber: dumberVotes.filter(vote => new Date(vote.timestamp).getHours() === i && new Date(vote.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length,
-          'Still Smart': smartVotes.filter(vote => new Date(vote.timestamp).getHours() === i && new Date(vote.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length
+          Dumber: modelData.dumber.filter(vote => new Date(vote.timestamp).getHours() === i && new Date(vote.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length,
+          'Still Smart': modelData.smart.filter(vote => new Date(vote.timestamp).getHours() === i && new Date(vote.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length
         }))
       };
     });
@@ -122,18 +121,18 @@ export default function Page() {
 
     const hotVotes = Object.entries(data).map(([name, votes]) => ({
       name,
-      total: (votes.dumber?.filter(vote => new Date(vote.timestamp) > twentyFourHoursAgo).length || 0) +
-             (votes.smart?.filter(vote => new Date(vote.timestamp) > twentyFourHoursAgo).length || 0)
+      total: votes.dumber.filter(vote => new Date(vote.timestamp) > twentyFourHoursAgo).length +
+             votes.smart.filter(vote => new Date(vote.timestamp) > twentyFourHoursAgo).length
     }));
 
     const dumbVotes = Object.entries(data).map(([name, votes]) => ({
       name,
-      dumber: votes.dumber?.length || 0
+      dumber: votes.dumber.length
     }));
 
     const smartVotes = Object.entries(data).map(([name, votes]) => ({
       name,
-      smart: votes.smart?.length || 0
+      smart: votes.smart.length
     }));
 
     setHotModels(hotVotes.sort((a, b) => b.total - a.total).slice(0, 3));
