@@ -72,7 +72,7 @@ export default function Page() {
 
   useEffect(() => {
     fetchVoteData();
-  }, []);
+  }, [fetchVoteData]);
 
   const fetchVoteData = async () => {
     setIsLoading(true);

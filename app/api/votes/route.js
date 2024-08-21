@@ -11,14 +11,15 @@ export async function GET() {
       if (!formattedVotes[model]) {
         formattedVotes[model] = { dumber: [], smart: [] };
       }
-      const votes = JSON.parse(value);
-      formattedVotes[model][voteType] = votes;
+      // Check if value is already an object, if not, try to parse it
+      const parsedValue = typeof value === 'object' ? value : JSON.parse(value);
+      formattedVotes[model][voteType] = Array.isArray(parsedValue) ? parsedValue : [parsedValue];
     }
     
     return NextResponse.json(formattedVotes);
   } catch (error) {
     console.error('Failed to fetch votes:', error);
-    return NextResponse.json({ error: 'Failed to fetch votes' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch votes', details: error.message }, { status: 500 });
   }
 }
 
@@ -30,13 +31,25 @@ export async function POST(request) {
     }
     
     const key = `${model}_${vote}`;
-    const currentVotes = JSON.parse(await kv.hget('votes', key) || '[]');
-    currentVotes.push({ timestamp });
-    await kv.hset('votes', { [key]: JSON.stringify(currentVotes) });
+    const currentVotes = await kv.hget('votes', key);
+    let updatedVotes = [];
+    
+    if (currentVotes) {
+      // If currentVotes is a string, parse it; otherwise, use it as is
+      updatedVotes = typeof currentVotes === 'string' ? JSON.parse(currentVotes) : currentVotes;
+    }
+    
+    // Ensure updatedVotes is an array
+    if (!Array.isArray(updatedVotes)) {
+      updatedVotes = [updatedVotes];
+    }
+    
+    updatedVotes.push({ timestamp });
+    await kv.hset('votes', { [key]: JSON.stringify(updatedVotes) });
     
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to record vote:', error);
-    return NextResponse.json({ error: 'Failed to record vote' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to record vote', details: error.message }, { status: 500 });
   }
 }
