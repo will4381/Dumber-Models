@@ -15,7 +15,8 @@ async function fetchFromKV(method, body = null) {
     body: body ? JSON.stringify(body) : null,
   };
 
-  const response = await fetch(`${KV_REST_API_URL}/hgetall/votes`, options);
+  const url = method === 'GET' ? `${KV_REST_API_URL}/hgetall/votes` : `${KV_REST_API_URL}/hmset/votes`;
+  const response = await fetch(url, options);
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
@@ -55,7 +56,7 @@ export async function GET() {
           parsedValue = JSON.parse(value);
         } catch (parseError) {
           console.error(`Error parsing value for ${key}:`, parseError);
-          parsedValue = [];
+          parsedValue = isNaN(value) ? [] : Number(value);
         }
 
         formattedVotes[model][voteType] = Array.isArray(parsedValue) ? parsedValue : [parsedValue];
@@ -90,6 +91,7 @@ export async function POST(request) {
           updatedVotes = JSON.parse(value);
         } catch (parseError) {
           console.error(`Error parsing current votes for ${key}:`, parseError);
+          updatedVotes = isNaN(value) ? [] : [Number(value)];
         }
       }
     }
@@ -101,7 +103,8 @@ export async function POST(request) {
     updatedVotes.push({ timestamp });
     console.log(`Updated votes for ${key}:`, updatedVotes);
 
-    await fetchFromKV('POST', { [key]: JSON.stringify(updatedVotes) });
+    const updateResult = await fetchFromKV('POST', { [key]: JSON.stringify(updatedVotes) });
+    console.log('Update result:', updateResult);
 
     return NextResponse.json({ success: true });
   } catch (error) {
