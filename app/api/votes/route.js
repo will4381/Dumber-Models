@@ -15,12 +15,20 @@ async function fetchFromKV(method, body = null) {
     body: body ? JSON.stringify(body) : null,
   };
 
-  const url = method === 'GET' ? `${KV_REST_API_URL}/hgetall/votes` : `${KV_REST_API_URL}/hmset/votes`;
+  const url = `${KV_REST_API_URL}/${method === 'GET' ? 'hgetall' : 'hmset'}/votes`;
+  console.log(`Sending ${method} request to:`, url);
+  console.log('Request options:', JSON.stringify(options));
+
   const response = await fetch(url, options);
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
   const text = await response.text();
+  
+  console.log(`Response status: ${response.status}`);
+  console.log('Response text:', text);
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}, body: ${text}`);
+  }
+
   try {
     return JSON.parse(text);
   } catch (error) {
@@ -40,7 +48,6 @@ export async function GET() {
 
     const formattedVotes = {};
 
-    // Handle the specific structure returned by Vercel KV
     if (votes.result && Array.isArray(votes.result)) {
       for (let i = 0; i < votes.result.length; i += 2) {
         const key = votes.result[i];
@@ -103,7 +110,10 @@ export async function POST(request) {
     updatedVotes.push({ timestamp });
     console.log(`Updated votes for ${key}:`, updatedVotes);
 
-    const updateResult = await fetchFromKV('POST', { [key]: JSON.stringify(updatedVotes) });
+    const updateBody = { [key]: JSON.stringify(updatedVotes) };
+    console.log('Sending update with body:', updateBody);
+
+    const updateResult = await fetchFromKV('POST', updateBody);
     console.log('Update result:', updateResult);
 
     return NextResponse.json({ success: true });
