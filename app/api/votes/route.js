@@ -19,13 +19,23 @@ async function fetchFromKV(method, body = null) {
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
   }
-  return response.json();
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    console.error('Error parsing JSON:', text);
+    throw new Error('Invalid JSON response from KV');
+  }
 }
 
 export async function GET() {
   try {
     const votes = await fetchFromKV('GET');
     console.log('Raw votes from KV:', votes);
+
+    if (typeof votes !== 'object' || votes === null) {
+      throw new Error('Invalid data structure received from KV');
+    }
 
     const formattedVotes = {};
 
