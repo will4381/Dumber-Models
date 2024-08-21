@@ -52,8 +52,22 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+const CategoryHeader = ({ emoji, title }) => (
+  <h2 className="text-3xl font-bold mb-6 flex items-center justify-start text-gray-800">
+    <span className="mr-2">{emoji}</span> {title}
+  </h2>
+);
+
+const MedalEmoji = ({ index }) => {
+  const medals = ['🥇', '🥈', '🥉'];
+  return <span className="mr-2">{medals[index]}</span>;
+};
+
 export default function Page() {
   const [chartData, setChartData] = useState({});
+  const [hotModels, setHotModels] = useState([]);
+  const [dumbModels, setDumbModels] = useState([]);
+  const [smartModels, setSmartModels] = useState([]);
 
   useEffect(() => {
     fetchVoteData();
@@ -65,6 +79,7 @@ export default function Page() {
       const data = await response.json();
       const formattedData = formatChartData(data);
       setChartData(formattedData);
+      calculateCategories(data);
     } catch (error) {
       console.error('Failed to fetch vote data:', error);
     }
@@ -73,13 +88,45 @@ export default function Page() {
   const formatChartData = (data) => {
     const formattedData = {};
     models.forEach(model => {
-      formattedData[model.name] = months.map(month => ({
-        date: month,
-        Dumber: data[`${model.name}_dumber`] || 0,
-        'Still Smart': data[`${model.name}_smart`] || 0
-      }));
+      formattedData[model.name] = {
+        monthly: months.map(month => ({
+          date: month,
+          Dumber: data[`${model.name}_dumber`]?.filter(vote => new Date(vote.timestamp).getMonth() === months.indexOf(month)).length || 0,
+          'Still Smart': data[`${model.name}_smart`]?.filter(vote => new Date(vote.timestamp).getMonth() === months.indexOf(month)).length || 0
+        })),
+        hourly: Array.from({ length: 24 }, (_, i) => ({
+          hour: i,
+          Dumber: data[`${model.name}_dumber`]?.filter(vote => new Date(vote.timestamp).getHours() === i && new Date(vote.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length || 0,
+          'Still Smart': data[`${model.name}_smart`]?.filter(vote => new Date(vote.timestamp).getHours() === i && new Date(vote.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length || 0
+        }))
+      };
     });
     return formattedData;
+  };
+
+  const calculateCategories = (data) => {
+    const now = Date.now();
+    const twentyFourHoursAgo = now - 24 * 60 * 60 * 1000;
+
+    const hotVotes = Object.entries(data).map(([name, votes]) => ({
+      name,
+      total: (votes.dumber?.filter(vote => new Date(vote.timestamp) > twentyFourHoursAgo).length || 0) +
+             (votes.smart?.filter(vote => new Date(vote.timestamp) > twentyFourHoursAgo).length || 0)
+    }));
+
+    const dumbVotes = Object.entries(data).map(([name, votes]) => ({
+      name,
+      dumber: votes.dumber?.length || 0
+    }));
+
+    const smartVotes = Object.entries(data).map(([name, votes]) => ({
+      name,
+      smart: votes.smart?.length || 0
+    }));
+
+    setHotModels(hotVotes.sort((a, b) => b.total - a.total).slice(0, 3));
+    setDumbModels(dumbVotes.sort((a, b) => b.dumber - a.dumber).slice(0, 3));
+    setSmartModels(smartVotes.sort((a, b) => b.smart - a.smart).slice(0, 3));
   };
 
   const handleVote = async (modelName, vote) => {
@@ -89,7 +136,7 @@ export default function Page() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ model: modelName, vote }),
+        body: JSON.stringify({ model: modelName, vote, timestamp: new Date().toISOString() }),
       });
       await fetchVoteData(); // Refresh data after voting
       Cookies.set(`voted_${modelName}`, 'true', { expires: 365 });
@@ -98,23 +145,34 @@ export default function Page() {
     }
   };
 
-  function InteractiveChart({ model }) {
+  function InteractiveChart({ model, index, isHot }) {
     const [hasVoted, setHasVoted] = useState(false);
 
     useEffect(() => {
-      const voted = Cookies.get(`voted_${model.name}`);
-      setHasVoted(voted === 'true');
-    }, [model.name]);
+      if (model && model.name) {
+        const voted = Cookies.get(`voted_${model.name}`);
+        setHasVoted(voted === 'true');
+      }
+    }, [model]);
+
+    if (!model) {
+      return null; // or return a placeholder component
+    }
+
+    const chartDataToUse = isHot ? chartData[model.name]?.hourly : chartData[model.name]?.monthly;
 
     return (
       <div key={model.name} className="bg-white rounded-xl shadow-lg p-8 border border-gray-200">
-        <h3 className="text-2xl font-bold mb-3 font-['Noto_Sans',_sans-serif] text-gray-800">{model.name}</h3>
+        <h3 className="text-2xl font-bold mb-3 font-['Noto_Sans',_sans-serif] text-gray-800">
+          {index !== undefined && <MedalEmoji index={index} />}
+          {model.name}
+        </h3>
         <p className="text-sm text-gray-600 mb-6">📅 Tracking since {model.date}</p>
         <div className="h-64 mb-6">
-          {chartData[model.name] ? (
+          {chartDataToUse ? (
             <ErrorBoundary>
-              <ResponsiveContainer width="100%" height="100%" key={JSON.stringify(chartData[model.name])}>
-                <AreaChart data={chartData[model.name]} margin={{ top: 5, right: 5, left: -30, bottom: 5 }}>
+              <ResponsiveContainer width="100%" height="100%" key={JSON.stringify(chartDataToUse)}>
+                <AreaChart data={chartDataToUse} margin={{ top: 5, right: 5, left: -30, bottom: 5 }}>
                   <defs>
                     <linearGradient id="colorDumber" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#FFA07A" stopOpacity={0.8}/>
@@ -127,7 +185,7 @@ export default function Page() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis 
-                    dataKey="date" 
+                    dataKey={isHot ? "hour" : "date"}
                     axisLine={false} 
                     tickLine={false} 
                     tick={{fill: '#888888', fontSize: 12}}
@@ -190,6 +248,32 @@ export default function Page() {
         <p className="text-xl text-left max-w-3xl mb-12 text-gray-700">
           Have current LLMs gotten dumber as time has gone on? Vote and see for yourself.
         </p>
+        
+        <CategoryHeader emoji="🔥" title="Hot (Last 24 Hours)" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 w-full mt-8 mb-16">
+          {hotModels.map((modelData, index) => {
+            const model = models.find(m => m.name === modelData.name);
+            return model ? <InteractiveChart key={model.name} model={model} index={index} isHot={true} /> : null;
+          })}
+        </div>
+
+        <CategoryHeader emoji="😴" title="Most Dumb Models" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 w-full mt-8 mb-16">
+          {dumbModels.map((modelData, index) => {
+            const model = models.find(m => m.name === modelData.name);
+            return model ? <InteractiveChart key={model.name} model={model} index={index} /> : null;
+          })}
+        </div>
+
+        <CategoryHeader emoji="🧠" title="Smartest Models" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 w-full mt-8 mb-16">
+          {smartModels.map((modelData, index) => {
+            const model = models.find(m => m.name === modelData.name);
+            return model ? <InteractiveChart key={model.name} model={model} index={index} /> : null;
+          })}
+        </div>
+
+        <CategoryHeader emoji="📋" title="All Models" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 w-full mt-8">
           {models.map((model) => (
             <InteractiveChart key={model.name} model={model} />
