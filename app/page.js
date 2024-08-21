@@ -68,36 +68,47 @@ export default function Page() {
   const [hotModels, setHotModels] = useState([]);
   const [dumbModels, setDumbModels] = useState([]);
   const [smartModels, setSmartModels] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchVoteData();
   }, []);
 
   const fetchVoteData = async () => {
+    setIsLoading(true);
     try {
       const response = await fetch('/api/votes');
       const data = await response.json();
+      console.log('API Response:', data);
       const formattedData = formatChartData(data);
+      console.log('Formatted Chart Data:', formattedData);
       setChartData(formattedData);
       calculateCategories(data);
     } catch (error) {
       console.error('Failed to fetch vote data:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const formatChartData = (data) => {
+    console.log('Formatting chart data...');
     const formattedData = {};
     models.forEach(model => {
+      const dumberVotes = data[`${model.name}_dumber`] || [];
+      const smartVotes = data[`${model.name}_smart`] || [];
+      console.log(`${model.name} votes:`, { dumber: dumberVotes.length, smart: smartVotes.length });
+
       formattedData[model.name] = {
         monthly: months.map(month => ({
           date: month,
-          Dumber: data[`${model.name}_dumber`]?.filter(vote => new Date(vote.timestamp).getMonth() === months.indexOf(month)).length || 0,
-          'Still Smart': data[`${model.name}_smart`]?.filter(vote => new Date(vote.timestamp).getMonth() === months.indexOf(month)).length || 0
+          Dumber: dumberVotes.filter(vote => new Date(vote.timestamp).getMonth() === months.indexOf(month)).length,
+          'Still Smart': smartVotes.filter(vote => new Date(vote.timestamp).getMonth() === months.indexOf(month)).length
         })),
         hourly: Array.from({ length: 24 }, (_, i) => ({
           hour: i,
-          Dumber: data[`${model.name}_dumber`]?.filter(vote => new Date(vote.timestamp).getHours() === i && new Date(vote.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length || 0,
-          'Still Smart': data[`${model.name}_smart`]?.filter(vote => new Date(vote.timestamp).getHours() === i && new Date(vote.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length || 0
+          Dumber: dumberVotes.filter(vote => new Date(vote.timestamp).getHours() === i && new Date(vote.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length,
+          'Still Smart': smartVotes.filter(vote => new Date(vote.timestamp).getHours() === i && new Date(vote.timestamp) > new Date(Date.now() - 24 * 60 * 60 * 1000)).length
         }))
       };
     });
@@ -105,6 +116,7 @@ export default function Page() {
   };
 
   const calculateCategories = (data) => {
+    console.log('Calculating categories...');
     const now = Date.now();
     const twentyFourHoursAgo = now - 24 * 60 * 60 * 1000;
 
@@ -127,6 +139,8 @@ export default function Page() {
     setHotModels(hotVotes.sort((a, b) => b.total - a.total).slice(0, 3));
     setDumbModels(dumbVotes.sort((a, b) => b.dumber - a.dumber).slice(0, 3));
     setSmartModels(smartVotes.sort((a, b) => b.smart - a.smart).slice(0, 3));
+    
+    console.log('Categories calculated:', { hotModels, dumbModels, smartModels });
   };
 
   const handleVote = async (modelName, vote) => {
@@ -169,7 +183,7 @@ export default function Page() {
         </h3>
         <p className="text-sm text-gray-600 mb-6">📅 Tracking since {model.date}</p>
         <div className="h-64 mb-6">
-          {chartDataToUse ? (
+          {chartDataToUse && chartDataToUse.length > 0 ? (
             <ErrorBoundary>
               <ResponsiveContainer width="100%" height="100%" key={JSON.stringify(chartDataToUse)}>
                 <AreaChart data={chartDataToUse} margin={{ top: 5, right: 5, left: -30, bottom: 5 }}>
@@ -206,7 +220,7 @@ export default function Page() {
             </ErrorBoundary>
           ) : (
             <div className="flex items-center justify-center h-full">
-              <p className="text-gray-500">Loading chart data...</p>
+              <p className="text-gray-500">No data available for this model</p>
             </div>
           )}
         </div>
@@ -237,6 +251,10 @@ export default function Page() {
         </div>
       </div>
     );
+  }
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-screen">Loading...</div>;
   }
 
   return (
