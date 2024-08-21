@@ -21,8 +21,8 @@ const CustomTooltip = ({ active, payload, label }) => {
     return (
       <div className="bg-white p-2 border border-gray-300 rounded shadow-md">
         <p className="text-sm font-semibold text-gray-800">{`Date: ${label}`}</p>
-        <p className="text-sm text-gray-800">👍 Still Smart: {payload[1].value}</p>
-        <p className="text-sm text-gray-800">👎 Dumber: {payload[0].value}</p>
+        <p className="text-sm text-gray-800">👍 Still Smart: {payload[1]?.value || 0}</p>
+        <p className="text-sm text-gray-800">👎 Dumber: {payload[0]?.value || 0}</p>
       </div>
     );
   }
@@ -32,11 +32,11 @@ const CustomTooltip = ({ active, payload, label }) => {
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
   }
 
   static getDerivedStateFromError(error) {
-    return { hasError: true };
+    return { hasError: true, error };
   }
 
   componentDidCatch(error, errorInfo) {
@@ -45,7 +45,7 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
-      return <h1>Something went wrong with the chart.</h1>;
+      return <div>Error: {this.state.error.message}</div>;
     }
 
     return this.props.children; 
@@ -60,7 +60,7 @@ const CategoryHeader = ({ emoji, title }) => (
 
 const MedalEmoji = ({ index }) => {
   const medals = ['🥇', '🥈', '🥉'];
-  return <span className="mr-2">{medals[index]}</span>;
+  return <span className="mr-2">{medals[index] || ''}</span>;
 };
 
 export default function Page() {
@@ -69,15 +69,20 @@ export default function Page() {
   const [dumbModels, setDumbModels] = useState([]);
   const [smartModels, setSmartModels] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchVoteData();
-  }, [fetchVoteData]);
+  }, []);
 
   const fetchVoteData = async () => {
     setIsLoading(true);
+    setError(null);
     try {
       const response = await fetch('/api/votes');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
       console.log('API Response:', data);
       const formattedData = formatChartData(data);
@@ -86,6 +91,7 @@ export default function Page() {
       calculateCategories(data);
     } catch (error) {
       console.error('Failed to fetch vote data:', error);
+      setError(error.message);
     } finally {
       setIsLoading(false);
     }
@@ -123,8 +129,8 @@ export default function Page() {
       console.log(`Processing hot votes for ${name}:`, votes);
       return {
         name,
-        total: ((votes.dumber || []).filter(vote => new Date(vote.timestamp) > twentyFourHoursAgo).length || 0) +
-               ((votes.smart || []).filter(vote => new Date(vote.timestamp) > twentyFourHoursAgo).length || 0)
+        total: ((votes?.dumber || []).filter(vote => new Date(vote.timestamp) > twentyFourHoursAgo).length || 0) +
+               ((votes?.smart || []).filter(vote => new Date(vote.timestamp) > twentyFourHoursAgo).length || 0)
       };
     });
 
@@ -132,7 +138,7 @@ export default function Page() {
       console.log(`Processing dumb votes for ${name}:`, votes);
       return {
         name,
-        dumber: (votes.dumber || []).length
+        dumber: (votes?.dumber || []).length || 0
       };
     });
 
@@ -140,7 +146,7 @@ export default function Page() {
       console.log(`Processing smart votes for ${name}:`, votes);
       return {
         name,
-        smart: (votes.smart || []).length
+        smart: (votes?.smart || []).length || 0
       };
     });
 
@@ -155,17 +161,21 @@ export default function Page() {
 
   const handleVote = async (modelName, vote) => {
     try {
-      await fetch('/api/votes', {
+      const response = await fetch('/api/votes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ model: modelName, vote, timestamp: new Date().toISOString() }),
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       await fetchVoteData(); // Refresh data after voting
       Cookies.set(`voted_${modelName}`, 'true', { expires: 365 });
     } catch (error) {
       console.error('Failed to submit vote:', error);
+      setError(error.message);
     }
   };
 
@@ -265,6 +275,10 @@ export default function Page() {
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-screen">Loading...</div>;
+  }
+
+  if (error) {
+    return <div className="flex justify-center items-center h-screen text-red-500">Error: {error}</div>;
   }
 
   return (
